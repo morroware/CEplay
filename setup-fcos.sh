@@ -604,14 +604,22 @@ UNIT
 bash "${SOURCE_DIR}/deploy/write-daily-unit.sh" \
     "$ENV_FILE" "$INSTALL_DIR" "$DATA_DIR" "$RUNTIME_IMAGE" "$LOAD_TAR_ARG"
 
+# ── weekly podman image prune ────────────────────────────────────────────────
+# Host maintenance rather than app logic, but it belongs to this install: the
+# May 2026 incident was podman's overlay storage filling the 8 GB root
+# partition and corrupting its own database. That prune was added by hand and
+# so never existed on a rebuilt box. See deploy/write-prune-unit.sh.
+bash "${SOURCE_DIR}/deploy/write-prune-unit.sh" "$DATA_DIR"
+
 systemctl daemon-reload
 systemctl enable --now pause-groups-watchdog.timer
 systemctl enable --now pause-groups-daily.timer
 systemctl enable --now pause-groups-refresh.timer
+systemctl enable --now podman-prune.timer
 
 # Verify
 TIMERS_OK=1
-for TIMER in pause-groups-watchdog.timer pause-groups-daily.timer pause-groups-refresh.timer; do
+for TIMER in pause-groups-watchdog.timer pause-groups-daily.timer pause-groups-refresh.timer podman-prune.timer; do
     if systemctl is-active --quiet "$TIMER"; then
         ok "${TIMER} is active."
     else

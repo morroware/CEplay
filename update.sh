@@ -329,6 +329,32 @@ hdr "7/8  Slack bot timers"
 # a channel, checked with --is-configured, which touches no network). Enabling
 # one for a bot nobody configured would put a failed run and an audit row in
 # front of the operator every morning.
+# ── weekly podman image prune ────────────────────────────────────────────────
+# Written on EVERY deploy, and deliberately outside the overlay-build branch
+# above: it runs plain `podman`, needs no image, and its whole purpose is
+# keeping podman's own storage from filling the root partition the way it did
+# in May 2026. Refreshing it here is also what corrects the original
+# hand-written `system prune -af`, which deleted the watchdog's image weekly
+# and raced the per-minute container churn. See deploy/write-prune-unit.sh.
+if [[ -f "${SRC_DIR}/deploy/write-prune-unit.sh" ]]; then
+    bash "${SRC_DIR}/deploy/write-prune-unit.sh" "$DATA_DIR"
+    if systemctl enable --now podman-prune.timer >/dev/null 2>&1; then
+        ok "Weekly podman image prune installed and enabled."
+    else
+        warn "Could not enable podman-prune.timer — check: systemctl status podman-prune.timer"
+    fi
+    # A hand-made drop-in from the September 2026 debugging session pointed the
+    # log at /var/persist, which SELinux refuses (the unit then dies at
+    # 209/STDOUT before podman runs). The unit now carries its own logging, so
+    # the drop-in is redundant at best and breaks the unit at worst.
+    if [[ -f /etc/systemd/system/podman-prune.service.d/10-logging.conf ]]; then
+        rm -f /etc/systemd/system/podman-prune.service.d/10-logging.conf
+        rmdir /etc/systemd/system/podman-prune.service.d 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
+        note "Removed the superseded podman-prune logging drop-in."
+    fi
+fi
+
 BOT_IMAGE="$PHP_IMAGE"
 if podman image exists "$MSSQL_IMAGE" 2>/dev/null; then
     BOT_IMAGE="$MSSQL_IMAGE"
